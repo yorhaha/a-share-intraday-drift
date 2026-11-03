@@ -1,0 +1,58 @@
+# A股日内分布与漂移
+
+在线页面：<https://yorhaha.github.io/a-share-intraday-drift/>
+
+输入任意 A 股，查看六项日内指标的分布，并检验最近几个周期的分布是否发生显著变化。纯静态前端，所有行情请求与统计计算都在浏览器中完成。
+
+## 功能
+
+- 六项指标：开盘涨跌幅、最高涨跌幅、最低涨跌幅、振幅、最高相对开盘、最低相对开盘。
+- 默认过去一年，可切换 3M / 6M / 1Y / 3Y / 5Y 或自定义日期。
+- 按交易日切块：取区间末尾 K × P 个交易日，从旧到新等分为 K 段（默认 P=60 日、K=4）。
+- 漂移检验：K 段最大两两 KS 距离的置换检验，六项指标做 BH-FDR 校正；同时给出末段减首段的中位数差、bootstrap 95% CI、IQR 变化和相邻段 KS 检验。
+- 直方图 / ECDF 切换，可在整体分布上叠加任一周期；漂移详情含 ECDF、箱线图、中位数轨迹与 CI。
+- 行情缓存 6 小时，支持刷新；支持前复权 / 不复权、剔除零振幅日、CSV 导出、URL 参数复现、深色模式与移动端布局。
+
+## 开发
+
+```bash
+npm install
+npm run dev        # http://localhost:3000
+npm test           # Vitest
+npm run typecheck
+npm run lint
+npm run build      # 静态导出到 out/
+```
+
+预览静态产物：
+
+```bash
+python3 -m http.server 4173 -d out
+# 打开 http://localhost:4173/
+```
+
+## 部署
+
+推送到 `main` 后，`.github/workflows/deploy.yml` 会运行测试、构建并发布到 GitHub Pages：
+
+<https://yorhaha.github.io/a-share-intraday-drift/>
+
+GitHub Pages 项目站点位于 `/<repo>/` 子路径，工作流构建时注入 `NEXT_PUBLIC_BASE_PATH=/a-share-intraday-drift`；本地构建无需该变量。
+
+## 数据
+
+- 搜索：腾讯 `smartbox.gtimg.cn`，JSONP。
+- 日线：腾讯 `web.ifzq.gtimg.cn/appstock/app/fqkline/get`，JSONP 优先，每页最多 640 根，按结束日期向前翻页。
+- 使用日线 OHLC；默认前复权；剔除字段异常、零成交和不完整的当日 K 线。
+- 行情接口为公开非官方接口，可能限流、变更或缺失；缓存可能不是最新数据。
+
+## 统计口径
+
+1. 每项指标在每个周期内有 n 个交易日样本。
+2. 全局检验：对 K 段计算所有两两 KS 距离的最大值 D；打乱段标签 999 次得到零分布，计算置换 p 值。
+3. 六项指标的全局 p 值做 Benjamini–Hochberg 校正，q < 0.05 视为显著。
+4. 效应量：末段中位数 − 首段中位数；2000 次 bootstrap 百分位置信区间。
+5. 相邻段两两 KS 的 p 值在 6 × (K−1) 次比较上做 BH 校正，仅在全局显著时解读，属于探索性定位。
+6. 每段有效样本少于 10 日不做检验；少于 20 日提示功效有限。
+
+本项目仅用于研究与数据观察，不构成投资建议。
