@@ -15,9 +15,14 @@ import {
 } from "@/lib/constants";
 import { runAnalysis, type AnalysisResult } from "@/lib/analysis";
 import { clearCache } from "@/lib/data/cache";
-import { resolveSymbol } from "@/lib/data/tencent";
+import {
+  clearQuoteCache,
+  fetchQuote,
+  resolveSymbol,
+} from "@/lib/data/tencent";
 import type { FqMode, MetricKey, SymbolHit } from "@/lib/data/types";
 import { addMonths, isValidDate, todayShanghai } from "@/lib/date";
+import { buildMarketSnapshot, type MarketSnapshot } from "@/lib/session";
 import { downloadCsv } from "@/lib/csv";
 import { fmtInt } from "@/lib/format";
 
@@ -89,6 +94,7 @@ export default function Dashboard() {
     null,
   );
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
+  const [session, setSession] = useState<MarketSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
@@ -214,6 +220,30 @@ export default function Dashboard() {
     refreshToken,
   ]);
 
+  useEffect(() => {
+    if (!urlReady) return;
+    let cancelled = false;
+    fetchQuote(symbol.symbol)
+      .then((quote) => {
+        if (cancelled) return;
+        setSession(quote ? buildMarketSnapshot(quote) : null);
+      })
+      .catch(() => {
+        if (!cancelled) setSession(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [urlReady, symbol.symbol, refreshToken]);
+
+  const sessionInRange = useMemo(() => {
+    if (!session || !analysis) return null;
+    return session.date >= analysis.options.start &&
+      session.date <= analysis.options.end
+      ? session
+      : null;
+  }, [analysis, session]);
+
   const selectedBlock = useMemo(() => {
     if (!analysis) return null;
     return (
@@ -308,11 +338,13 @@ export default function Dashboard() {
     setSymbol(hit);
     setAnalysis(null);
     setSelectedBlockIndex(null);
+    setSession(null);
   };
 
   const handleRefresh = () => {
     markUpdating();
     clearCache();
+    clearQuoteCache();
     setRefreshToken((token) => token + 1);
   };
 
@@ -488,6 +520,7 @@ export default function Dashboard() {
             <DistributionGrid
               analysis={analysis}
               selectedBlock={selectedBlock}
+              session={sessionInRange}
               selectedMetric={selectedMetric}
               chartMode={chartMode}
               dark={dark}

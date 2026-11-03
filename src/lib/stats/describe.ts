@@ -142,6 +142,17 @@ export function ecdfPoints(
   return points;
 }
 
+/** 历史样本中不大于给定值的比例，与 ECDF 的纵轴口径一致。 */
+export function percentileRank(values: number[], value: number): number {
+  const clean = finiteValues(values);
+  if (clean.length === 0 || !Number.isFinite(value)) return NaN;
+  let count = 0;
+  for (const item of clean) {
+    if (item <= value) count += 1;
+  }
+  return count / clean.length;
+}
+
 export interface HistogramBin {
   x0: number;
   x1: number;

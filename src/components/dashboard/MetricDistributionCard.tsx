@@ -2,17 +2,23 @@
 
 import { useMemo } from "react";
 import EChart from "@/components/charts/EChart";
-import { ecdfOption, histogramOption } from "@/components/charts/options";
+import {
+  ecdfOption,
+  histogramOption,
+  type SessionMarker,
+} from "@/components/charts/options";
 import { BLOCK_COLORS } from "@/lib/constants";
 import type { DailyMetrics, MetricDef, PeriodBlock } from "@/lib/data/types";
+import type { MarketSnapshot } from "@/lib/session";
 import type { MetricDrift } from "@/lib/stats/drift";
-import { describe } from "@/lib/stats/describe";
+import { describe, percentileRank } from "@/lib/stats/describe";
 import { cx, fmtQ, pct, pp } from "@/lib/format";
 
 interface MetricDistributionCardProps {
   def: MetricDef;
   rows: DailyMetrics[];
   block: PeriodBlock | null;
+  session: MarketSnapshot | null;
   drift: MetricDrift | undefined;
   chartMode: "hist" | "ecdf";
   active: boolean;
@@ -40,10 +46,18 @@ function badgeFor(drift: MetricDrift | undefined): {
   };
 }
 
+function rankText(rank: number): string {
+  if (!Number.isFinite(rank)) return "—";
+  const percent = rank * 100;
+  if (percent > 0 && percent < 1) return "<1%";
+  return `${Math.round(percent)}%`;
+}
+
 export default function MetricDistributionCard({
   def,
   rows,
   block,
+  session,
   drift,
   chartMode,
   active,
@@ -58,6 +72,12 @@ export default function MetricDistributionCard({
     () => (block ? block.rows.map((row) => row[def.key]) : []),
     [block, def.key],
   );
+  const sessionMarker = useMemo<SessionMarker | null>(() => {
+    if (!session) return null;
+    const value = session[def.key];
+    if (!Number.isFinite(value)) return null;
+    return { value, label: session.isToday ? "当日" : "最近" };
+  }, [session, def.key]);
   const blockColor = block
     ? BLOCK_COLORS[(block.index - 1) % BLOCK_COLORS.length]
     : BLOCK_COLORS[0];
@@ -71,6 +91,7 @@ export default function MetricDistributionCard({
             def,
             dark,
             blockColor,
+            sessionMarker,
           )
         : ecdfOption(
             overall,
@@ -79,12 +100,29 @@ export default function MetricDistributionCard({
             def,
             dark,
             blockColor,
+            sessionMarker,
           ),
-    [chartMode, overall, blockValues, block?.label, def, dark, blockColor],
+    [
+      chartMode,
+      overall,
+      blockValues,
+      block?.label,
+      def,
+      dark,
+      blockColor,
+      sessionMarker,
+    ],
   );
 
   const overallStats = useMemo(() => describe(overall), [overall]);
   const blockStats = useMemo(() => describe(blockValues), [blockValues]);
+  const sessionRanks = useMemo(() => {
+    if (!sessionMarker) return null;
+    return {
+      overall: percentileRank(overall, sessionMarker.value),
+      block: block ? percentileRank(blockValues, sessionMarker.value) : NaN,
+    };
+  }, [sessionMarker, overall, blockValues, block]);
   const badge = badgeFor(drift);
 
   return (
@@ -115,6 +153,31 @@ export default function MetricDistributionCard({
       </div>
 
       <div className="metric-footer">
+        {sessionMarker && sessionRanks ? (
+          <div className="metric-stat-line metric-session-line">
+            <span className="metric-stat-label">
+              <span className="metric-dot metric-dot-session" aria-hidden="true" />
+              {session?.isToday ? "当日" : "最近"}
+            </span>
+            <span className="num metric-session-value">
+              {pct(sessionMarker.value, 2, def.signed)}
+            </span>
+            <span
+              className="faint num"
+              title="全区间历史样本中不超过该值的比例"
+            >
+              历史分位 {rankText(sessionRanks.overall)}
+            </span>
+            {block ? (
+              <span
+                className="faint num"
+                title={`${block.label}样本中不超过该值的比例`}
+              >
+                周期分位 {rankText(sessionRanks.block)}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
         <div className="metric-stat-line">
           <span className="metric-stat-label">全区间</span>
           <span className="num">

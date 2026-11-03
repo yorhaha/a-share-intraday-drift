@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   parseKlinePayload,
   parseKlineRows,
+  parseQuotePayload,
   parseSmartboxResponse,
 } from "./tencent";
 
@@ -94,5 +95,54 @@ describe("parseKlinePayload", () => {
     expect(() =>
       parseKlinePayload({ code: 1, msg: "bad params" }, "sh601318"),
     ).toThrow("bad params");
+  });
+});
+
+function quotePayload(overrides: Partial<Record<number, string>> = {}): string {
+  const parts = new Array<string>(35).fill("");
+  parts[1] = "招商银行";
+  parts[2] = "600036";
+  parts[3] = "36.52";
+  parts[4] = "36.10";
+  parts[5] = "36.20";
+  parts[6] = "123456";
+  parts[30] = "20241103143500";
+  parts[33] = "36.80";
+  parts[34] = "36.05";
+  for (const [index, value] of Object.entries(overrides)) {
+    parts[Number(index)] = value ?? "";
+  }
+  return `v_sh600036="${parts.join("~")}";`;
+}
+
+describe("parseQuotePayload", () => {
+  it("parses the latest price, previous close and quote time", () => {
+    const quote = parseQuotePayload(quotePayload(), "sh600036");
+    expect(quote).not.toBeNull();
+    expect(quote?.date).toBe("2024-11-03");
+    expect(quote?.time).toBe("14:35");
+    expect(quote?.open).toBeCloseTo(36.2, 10);
+    expect(quote?.close).toBeCloseTo(36.52, 10);
+    expect(quote?.high).toBeCloseTo(36.8, 10);
+    expect(quote?.low).toBeCloseTo(36.05, 10);
+    expect(quote?.prevClose).toBeCloseTo(36.1, 10);
+    expect(quote?.volume).toBe(123456);
+  });
+
+  it("accepts an unwrapped payload string", () => {
+    const payload = quotePayload().replace(/^v_sh600036="|";$/g, "");
+    expect(parseQuotePayload(payload)?.close).toBeCloseTo(36.52, 10);
+  });
+
+  it("rejects a quote for another symbol", () => {
+    expect(parseQuotePayload(quotePayload(), "sz000001")).toBeNull();
+  });
+
+  it("rejects invalid timestamps and inconsistent prices", () => {
+    expect(
+      parseQuotePayload(quotePayload({ 30: "2024-11-03 14:35:00" })),
+    ).toBeNull();
+    expect(parseQuotePayload(quotePayload({ 33: "35.00" }))).toBeNull();
+    expect(parseQuotePayload(quotePayload({ 5: "0" }))).toBeNull();
   });
 });

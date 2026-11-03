@@ -11,9 +11,11 @@ import { readGlobalJsonp } from "./jsonp";
 const SEARCH_ENDPOINT = "https://smartbox.gtimg.cn/s3/";
 const KLINE_ENDPOINT =
   "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get";
+const QUOTE_ENDPOINT = "https://qt.gtimg.cn/q=";
 const MAX_BARS = 640;
 const CACHE_TTL = 6 * 60 * 60 * 1000;
 const SEARCH_TTL = 5 * 60 * 1000;
+const QUOTE_TTL = 20 * 1000;
 
 type TencentKlineEntry = {
   qfqday?: unknown[][];
@@ -33,11 +35,22 @@ export interface DailySeriesResult {
   fromCache: boolean;
 }
 
+export interface QuoteSnapshot extends DailyBar {
+  prevClose: number;
+  /** 行情时间（Asia/Shanghai），HH:mm。 */
+  time: string;
+}
+
 const searchCache = new Map<
   string,
   { fetchedAt: number; hits: SymbolHit[] }
 >();
 const pending = new Map<string, Promise<DailySeriesResult>>();
+const quoteCache = new Map<
+  string,
+  { fetchedAt: number; quote: QuoteSnapshot | null }
+>();
+const quotePending = new Map<string, Promise<QuoteSnapshot | null>>();
 
 function decodeJsonpString(raw: string): string {
   try {
@@ -199,6 +212,117 @@ export function parseKlinePayload(
   if (!entry) return { bars: [], dropped: 0 };
   const rows = entry.qfqday ?? entry.day ?? entry.hfqday ?? [];
   return parseKlineRows(rows);
+}
+
+export function parseQuotePayload(
+  text: string,
+  expectedSymbol?: string,
+): QuoteSnapshot | null {
+  const trimmed = text.trim();
+  const firstQuote = trimmed.indexOf('"');
+  const lastQuote = trimmed.lastIndexOf('"');
+  const payload =
+    firstQuote >= 0 && lastQuote > firstQuote
+      ? trimmed.slice(firstQuote + 1, lastQuote)
+      : trimmed;
+  if (!payload) return null;
+
+  const parts = payload.split("~");
+  if (parts.length < 35) return null;
+  if (expectedSymbol && parts[2] !== expectedSymbol.slice(-6)) return null;
+
+  const rawTime = parts[30] ?? "";
+  if (!/^\d{14}$/.test(rawTime)) return null;
+  const date = `${rawTime.slice(0, 4)}-${rawTime.slice(4, 6)}-${rawTime.slice(6, 8)}`;
+  if (!isValidDate(date)) return null;
+
+  const open = Number(parts[5]);
+  const close = Number(parts[3]);
+  const high = Number(parts[33]);
+  const low = Number(parts[34]);
+  const prevClose = Number(parts[4]);
+  const volume = Number(parts[6]);
+  const values = [open, close, high, low, prevClose, volume];
+  if (!values.every((value) => Number.isFinite(value))) return null;
+  if (!(open > 0 && close > 0 && high > 0 && low > 0 && prevClose > 0)) {
+    return null;
+  }
+  if (volume < 0) return null;
+  const eps = 1e-6;
+  if (high < low - eps) return null;
+  if (high < Math.max(open, close) - eps) return null;
+  if (low > Math.min(open, close) + eps) return null;
+
+  return {
+    date,
+    open,
+    close,
+    high,
+    low,
+    volume,
+    prevClose,
+    time: `${rawTime.slice(8, 10)}:${rawTime.slice(10, 12)}`,
+  };
+}
+
+async function fetchQuoteUncached(
+  symbol: string,
+): Promise<QuoteSnapshot | null> {
+  const url = `${QUOTE_ENDPOINT}${symbol}&r=${Date.now()}`;
+  const globalName = `v_${symbol}`;
+
+  // 腾讯实时行情返回 GBK 脚本赋值；优先用 JSONP 让浏览器完成解码。
+  try {
+    const value = await readGlobalJsonp<unknown>(url, globalName, 8_000);
+    if (typeof value === "string") return parseQuotePayload(value, symbol);
+  } catch {
+    // 某些网络环境会拦截脚本加载，继续走 fetch 兜底。
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8_000);
+  try {
+    const response = await fetch(url, {
+      signal: controller.signal,
+      cache: "no-store",
+    });
+    if (!response.ok) return null;
+    return parseQuotePayload(await response.text(), symbol);
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function fetchQuote(
+  symbol: string,
+  force = false,
+): Promise<QuoteSnapshot | null> {
+  if (!force) {
+    const cached = quoteCache.get(symbol);
+    if (cached && Date.now() - cached.fetchedAt < QUOTE_TTL) {
+      return cached.quote;
+    }
+    const inflight = quotePending.get(symbol);
+    if (inflight) return inflight;
+  }
+
+  const task = fetchQuoteUncached(symbol)
+    .then((quote) => {
+      quoteCache.set(symbol, { fetchedAt: Date.now(), quote });
+      return quote;
+    })
+    .finally(() => {
+      quotePending.delete(symbol);
+    });
+
+  quotePending.set(symbol, task);
+  return task;
+}
+
+export function clearQuoteCache(): void {
+  quoteCache.clear();
 }
 
 async function fetchKlineChunk(

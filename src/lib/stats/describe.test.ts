@@ -4,6 +4,7 @@ import {
   describe as describeValues,
   histogram,
   histogramWithEdges,
+  percentileRank,
 } from "./describe";
 
 describe("describe", () => {
@@ -33,5 +34,19 @@ describe("histogramWithEdges", () => {
 
   it("assigns the upper edge to the last bin", () => {
     expect(histogramWithEdges([0, 1, 2], [0, 1, 2])).toEqual([1, 2]);
+  });
+});
+
+describe("percentileRank", () => {
+  it("returns the share of samples at or below the value", () => {
+    expect(percentileRank([1, 2, 3, 4], 2)).toBe(0.5);
+    expect(percentileRank([1, 2, 3, 4], 2.5)).toBe(0.5);
+    expect(percentileRank([1, 2, 3, 4], 0)).toBe(0);
+    expect(percentileRank([1, 2, 3, 4], 4)).toBe(1);
+  });
+
+  it("returns NaN for empty or non-finite inputs", () => {
+    expect(percentileRank([], 1)).toBeNaN();
+    expect(percentileRank([1, 2], Number.NaN)).toBeNaN();
   });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DailyBar } from "./data/types";
-import { computeMetrics, isValidBar } from "./metrics";
+import { computeMetricValues, computeMetrics, isValidBar } from "./metrics";
 
 const base: DailyBar[] = [
   {
@@ -75,5 +75,43 @@ describe("isValidBar", () => {
         volume: 1,
       }),
     ).toBe(false);
+  });
+});
+
+describe("computeMetricValues", () => {
+  it("uses the latest price as the session close", () => {
+    const values = computeMetricValues(
+      {
+        date: "2024-01-03",
+        open: 51,
+        high: 52,
+        low: 49.5,
+        close: 50.5,
+        volume: 200,
+      },
+      50,
+    );
+    expect(values).not.toBeNull();
+    expect(values?.openRet).toBeCloseTo(0.02, 10);
+    expect(values?.highRet).toBeCloseTo(0.04, 10);
+    expect(values?.lowRet).toBeCloseTo(-0.01, 10);
+    expect(values?.amplitude).toBeCloseTo(0.05, 10);
+    expect(values?.zeroRange).toBe(false);
+  });
+
+  it("rejects a non-positive previous close", () => {
+    expect(
+      computeMetricValues(
+        {
+          date: "2024-01-03",
+          open: 51,
+          high: 52,
+          low: 49.5,
+          close: 50.5,
+          volume: 200,
+        },
+        0,
+      ),
+    ).toBeNull();
   });
 });

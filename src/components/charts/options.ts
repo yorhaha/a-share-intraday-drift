@@ -11,6 +11,7 @@ import {
 import {
   axisModeForMetric,
   distributionAxis,
+  HISTOGRAM_BIN_WIDTH_PCT,
 } from "@/lib/stats/distribution";
 import type {
   DistributionAxis,
@@ -29,6 +30,8 @@ interface ChartTheme {
   tooltipBorder: string;
   tooltipText: string;
   subText: string;
+  session: string;
+  sessionText: string;
 }
 
 function theme(dark: boolean): ChartTheme {
@@ -40,6 +43,8 @@ function theme(dark: boolean): ChartTheme {
         tooltipBorder: "#2b3648",
         tooltipText: "#e8edf5",
         subText: "#aab4c3",
+        session: "#f8fafc",
+        sessionText: "#0b1220",
       }
     : {
         axis: "#7a8496",
@@ -48,6 +53,8 @@ function theme(dark: boolean): ChartTheme {
         tooltipBorder: "#e3e8ef",
         tooltipText: "#172033",
         subText: "#5d6878",
+        session: "#111827",
+        sessionText: "#ffffff",
       };
 }
 
@@ -101,12 +108,54 @@ function axisText(t: ChartTheme) {
 }
 
 function formatAxisPct(valuePct: number): string {
-  const rounded = Math.round(valuePct * 1000) / 1000;
-  const text = Math.abs(rounded).toFixed(2).replace(/\.?0+$/, "");
-  return `${rounded < 0 ? "−" : ""}${text}%`;
+  const text = Math.abs(valuePct).toFixed(2).replace(/\.?0+$/, "");
+  return `${valuePct < 0 ? "−" : ""}${text}%`;
 }
 
-function zeroMarkLine(t: ChartTheme) {
+export interface SessionMarker {
+  /** 指标值，小数比例（0.012 表示 1.2%）。 */
+  value: number;
+  /** 图上标注文字，例如「当日」「最近」。 */
+  label: string;
+}
+
+function sessionAxisValues(session: SessionMarker | null | undefined): number[] {
+  if (!session || !Number.isFinite(session.value)) return [];
+  if (session.value === 0) return [0];
+  const pad = (Math.sign(session.value) * HISTOGRAM_BIN_WIDTH_PCT) / 100;
+  return [session.value, session.value + pad];
+}
+
+function guideMarkLine(
+  t: ChartTheme,
+  session: SessionMarker | null | undefined,
+  axis: DistributionAxis | null = null,
+) {
+  const data: Record<string, unknown>[] = [{ xAxis: 0 }];
+  if (session && Number.isFinite(session.value)) {
+    const pct = session.value * 100;
+    const span = axis ? axis.maxPct - axis.minPct : 0;
+    const relative = axis && span > 0 ? (pct - axis.minPct) / span : 0.5;
+    data.push({
+      xAxis: pct,
+      lineStyle: { color: t.session, type: "solid", width: 1.5 },
+      label: {
+        show: true,
+        position: "insideEndTop",
+        distance: 3,
+        rotate: 0,
+        align: relative > 0.82 ? "right" : relative < 0.18 ? "left" : "center",
+        formatter: `${session.label} ${formatAxisPct(pct)}`,
+        color: t.sessionText,
+        backgroundColor: t.session,
+        padding: [2, 5],
+        borderRadius: 4,
+        fontSize: 9,
+        fontWeight: 600,
+        fontFamily: FONT,
+      },
+    });
+  }
   return {
     silent: true,
     symbol: "none",
@@ -114,7 +163,7 @@ function zeroMarkLine(t: ChartTheme) {
     z2: 10,
     label: { show: false },
     lineStyle: { color: alpha(t.axis, 0.55), type: "dashed", width: 1 },
-    data: [{ xAxis: 0 }],
+    data,
   };
 }
 
@@ -153,12 +202,16 @@ export function histogramOption(
   def: MetricDef,
   dark: boolean,
   blockColor: string = BLOCK_COLORS[0],
+  session: SessionMarker | null = null,
 ): EChartsCoreOption {
   const t = theme(dark);
   const hasBlock = Boolean(block && block.length > 0);
   const combined = hasBlock ? [...overall, ...(block ?? [])] : overall;
   const mode = axisModeForMetric(def.key);
-  const axis = distributionAxis(combined, mode);
+  const axis = distributionAxis(
+    [...combined, ...sessionAxisValues(session)],
+    mode,
+  );
   const labelInterval = symmetricLabelInterval(axis, mode);
   if (axis.edgesPct.length < 2) return {};
 
@@ -203,7 +256,7 @@ export function histogramOption(
       emphasis: { itemStyle: { color: blockColor } },
     });
   }
-  series[series.length - 1].markLine = zeroMarkLine(t);
+  series[series.length - 1].markLine = guideMarkLine(t, session, axis);
 
   return {
     ...baseOption(t),
@@ -273,11 +326,14 @@ export function ecdfOption(
   def: MetricDef,
   dark: boolean,
   blockColor: string = BLOCK_COLORS[0],
+  session: SessionMarker | null = null,
 ): EChartsCoreOption {
   const t = theme(dark);
   const mode = axisModeForMetric(def.key);
+  const combined =
+    block && block.length > 0 ? [...overall, ...block] : overall;
   const axis = distributionAxis(
-    block && block.length > 0 ? [...overall, ...block] : overall,
+    [...combined, ...sessionAxisValues(session)],
     mode,
   );
   const labelInterval = symmetricLabelInterval(axis, mode);
@@ -311,7 +367,7 @@ export function ecdfOption(
       itemStyle: { color: blockColor },
     });
   }
-  series[series.length - 1].markLine = zeroMarkLine(t);
+  series[series.length - 1].markLine = guideMarkLine(t, session, axis);
 
   return {
     ...baseOption(t),
@@ -410,7 +466,7 @@ export function blockEcdfOption(
       z: 3,
     })),
   ];
-  series[series.length - 1].markLine = zeroMarkLine(t);
+  series[series.length - 1].markLine = guideMarkLine(t, null);
 
   return {
     ...baseOption(t),
