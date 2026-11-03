@@ -44,7 +44,7 @@ GitHub Pages 项目站点位于 `/<repo>/` 子路径，工作流构建时注入 
 ## 数据
 
 - 搜索：腾讯 `smartbox.gtimg.cn`，JSONP。
-- 日线：腾讯 `web.ifzq.gtimg.cn/appstock/app/fqkline/get`，JSONP 优先，每页最多 640 根，按结束日期向前翻页。
+- 日线：腾讯 `web.ifzq.gtimg.cn` / `ifzq.gtimg.cn` / `proxy.finance.qq.com` 的 K 线接口，JSONP 优先；主域名失败时依次切换备用域名，仍失败再回退 fetch。每页最多 640 根，按结束日期向前翻页。
 - 实时快照：腾讯 `qt.gtimg.cn`，读取最新价、开盘、最高、最低与前收盘；盘中最新价视为收盘价，未开盘或非交易日返回最近交易日。
 - 使用日线 OHLC；默认前复权；剔除字段异常、零成交和不完整的当日 K 线。日线按标的和复权方式缓存到 localStorage，保留 6 小时并限制条目数；刷新行情会清空缓存。
 - 行情接口为公开非官方接口，可能限流、变更或缺失；缓存可能不是最新数据。

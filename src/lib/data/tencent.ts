@@ -17,8 +17,11 @@ import {
 import { readGlobalJsonp } from "./jsonp";
 
 const SEARCH_ENDPOINT = "https://smartbox.gtimg.cn/s3/";
-const KLINE_ENDPOINT =
-  "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get";
+const KLINE_ENDPOINTS = [
+  "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get",
+  "https://ifzq.gtimg.cn/appstock/app/fqkline/get",
+  "https://proxy.finance.qq.com/ifzqgtimg/appstock/app/newfqkline/get",
+] as const;
 const QUOTE_ENDPOINT = "https://qt.gtimg.cn/q=";
 const MAX_BARS = 640;
 const CACHE_TTL = 6 * 60 * 60 * 1000;
@@ -168,9 +171,15 @@ export async function resolveSymbol(raw: string): Promise<SymbolHit | null> {
   return hits[0] ?? null;
 }
 
-function klineUrl(symbol: string, end: string, fq: FqMode): string {
+function klineUrl(
+  endpoint: string,
+  symbol: string,
+  start: string,
+  end: string,
+  fq: FqMode,
+): string {
   const fqParam = fq === "qfq" ? "qfq" : "";
-  return `${KLINE_ENDPOINT}?param=${symbol},day,1990-01-01,${end},${MAX_BARS},${fqParam}`;
+  return `${endpoint}?param=${symbol},day,${start},${end},${MAX_BARS},${fqParam}`;
 }
 
 function rowToBar(row: unknown[]): DailyBar | null {
@@ -345,28 +354,37 @@ export function clearQuoteCache(): void {
 
 async function fetchKlineChunk(
   symbol: string,
+  start: string,
   end: string,
   fq: FqMode,
 ): Promise<{ bars: DailyBar[]; dropped: number }> {
-  const url = klineUrl(symbol, end, fq);
-
   // 腾讯的 _var 返回的是「全局赋值」而不是函数调用，因此用 readGlobalJsonp
-  // 读取执行后的全局变量。日线接口的 CORS 头在不同边缘节点上不稳定，
-  // 静态页面优先走 JSONP，失败时再用 fetch 兜底。
-  const globalName = `__market_dist_kline_${Date.now()}_${Math.floor(
-    Math.random() * 1_000_000,
-  )}`;
-  try {
-    const payload = await readGlobalJsonp<TencentKlineResponse>(
-      `${url}&_var=${globalName}`,
-      globalName,
-      15_000,
-    );
-    if (!payload) throw new Error("行情接口返回为空");
-    return parseKlinePayload(payload, symbol);
-  } catch {
+  // 读取执行后的全局变量。日线接口的边缘节点偶尔返回 501，且错误响应不带
+  // CORS 头；先依次尝试多个腾讯域名，都失败后再用 fetch 兜底。
+  let lastError: unknown = null;
+
+  for (const endpoint of KLINE_ENDPOINTS) {
+    const url = klineUrl(endpoint, symbol, start, end, fq);
+    const globalName = `__market_dist_kline_${Date.now()}_${Math.floor(
+      Math.random() * 1_000_000,
+    )}`;
+    try {
+      const payload = await readGlobalJsonp<TencentKlineResponse>(
+        `${url}&_var=${globalName}`,
+        globalName,
+        12_000,
+      );
+      if (!payload) throw new Error("行情接口返回为空");
+      return parseKlinePayload(payload, symbol);
+    } catch (reason) {
+      lastError = reason;
+    }
+  }
+
+  for (const endpoint of KLINE_ENDPOINTS) {
+    const url = klineUrl(endpoint, symbol, start, end, fq);
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 15_000);
+    const timer = setTimeout(() => controller.abort(), 12_000);
     try {
       const response = await fetch(url, {
         signal: controller.signal,
@@ -376,10 +394,14 @@ async function fetchKlineChunk(
       const text = await response.text();
       const payload = JSON.parse(text) as TencentKlineResponse;
       return parseKlinePayload(payload, symbol);
+    } catch (reason) {
+      lastError = reason;
     } finally {
       clearTimeout(timer);
     }
   }
+
+  throw lastError instanceof Error ? lastError : new Error("行情接口请求失败");
 }
 
 async function fetchDailySeriesUncached(
@@ -392,10 +414,18 @@ async function fetchDailySeriesUncached(
   let dropped = 0;
   let currentEnd = end;
   let iterations = 0;
+  // 多取一段缓冲，保证区间首日仍能拿到上一交易日收盘价；
+  // 同时避免向接口请求 1990 年至今的整段数据。
+  const requestStart = addDays(start, -20);
 
   while (iterations < 20) {
     iterations += 1;
-    const chunk = await fetchKlineChunk(symbol, currentEnd, fq);
+    const chunk = await fetchKlineChunk(
+      symbol,
+      requestStart,
+      currentEnd,
+      fq,
+    );
     dropped += chunk.dropped;
     if (chunk.bars.length === 0) break;
 
@@ -405,7 +435,7 @@ async function fetchDailySeriesUncached(
 
     const earliest = chunk.bars[0].date;
     if (chunk.bars.length < MAX_BARS) break;
-    if (earliest < start) break;
+    if (earliest < requestStart) break;
 
     const nextEnd = addDays(earliest, -1);
     if (nextEnd >= currentEnd) break;
