@@ -6,9 +6,16 @@ import type { DailyMetrics, MetricDef } from "@/lib/data/types";
 import {
   boxStats,
   ecdfPoints,
-  histogram,
   histogramWithEdges,
 } from "@/lib/stats/describe";
+import {
+  axisModeForMetric,
+  distributionAxis,
+} from "@/lib/stats/distribution";
+import type {
+  DistributionAxis,
+  DistributionAxisMode,
+} from "@/lib/stats/distribution";
 import type { MetricDrift } from "@/lib/stats/drift";
 import { pct, pp } from "@/lib/format";
 
@@ -93,6 +100,43 @@ function axisText(t: ChartTheme) {
   return { color: t.axis, fontSize: 10, fontFamily: FONT };
 }
 
+function formatAxisPct(valuePct: number): string {
+  const rounded = Math.round(valuePct * 1000) / 1000;
+  const text = Math.abs(rounded).toFixed(2).replace(/\.?0+$/, "");
+  return `${rounded < 0 ? "−" : ""}${text}%`;
+}
+
+function zeroMarkLine(t: ChartTheme) {
+  return {
+    silent: true,
+    symbol: "none",
+    animation: false,
+    z2: 10,
+    label: { show: false },
+    lineStyle: { color: alpha(t.axis, 0.55), type: "dashed", width: 1 },
+    data: [{ xAxis: 0 }],
+  };
+}
+
+function pctAxisLabel(t: ChartTheme) {
+  return {
+    ...axisText(t),
+    formatter: formatAxisPct,
+    hideOverlap: true,
+    showMinLabel: true,
+    showMaxLabel: true,
+  };
+}
+
+function symmetricLabelInterval(
+  axis: DistributionAxis,
+  mode: DistributionAxisMode,
+): number | undefined {
+  if (mode !== "symmetric") return undefined;
+  const divisions = axis.maxPct <= 1 ? 2 : 3;
+  return (axis.maxPct - axis.minPct) / (divisions * 2);
+}
+
 function baseOption(t: ChartTheme) {
   return {
     animationDuration: 320,
@@ -111,24 +155,33 @@ export function histogramOption(
   blockColor: string = BLOCK_COLORS[0],
 ): EChartsCoreOption {
   const t = theme(dark);
-  const combined = block && block.length > 0 ? [...overall, ...block] : overall;
-  const bins = histogram(combined);
-  if (bins.length === 0) return {};
-  const edges = [bins[0].x0, ...bins.map((bin) => bin.x1)];
+  const hasBlock = Boolean(block && block.length > 0);
+  const combined = hasBlock ? [...overall, ...(block ?? [])] : overall;
+  const mode = axisModeForMetric(def.key);
+  const axis = distributionAxis(combined, mode);
+  const labelInterval = symmetricLabelInterval(axis, mode);
+  if (axis.edgesPct.length < 2) return {};
+
+  const edges = axis.edgesPct.map((value) => value / 100);
   const overallCounts = histogramWithEdges(overall, edges);
-  const blockCounts =
-    block && block.length > 0 ? histogramWithEdges(block, edges) : [];
-  const labels = bins.map((bin) => ((bin.x0 + bin.x1) / 2 * 100).toFixed(2));
+  const blockCounts = hasBlock ? histogramWithEdges(block ?? [], edges) : [];
+  const centers = axis.edgesPct
+    .slice(0, -1)
+    .map((edge, index) => (edge + axis.edgesPct[index + 1]) / 2);
   const toShare = (counts: number[], total: number) =>
     counts.map((count) => (total > 0 ? count / total : 0));
+  const overallShares = toShare(overallCounts, overall.length);
+  const blockShares = hasBlock
+    ? toShare(blockCounts, (block ?? []).length)
+    : [];
 
   const series: Record<string, unknown>[] = [
     {
       name: `全区间 (n=${overall.length})`,
       type: "bar",
-      data: toShare(overallCounts, overall.length),
+      data: centers.map((center, index) => [center, overallShares[index]]),
+      barWidth: "90%",
       barGap: "-100%",
-      barCategoryGap: "18%",
       itemStyle: {
         color: alpha(OVERALL_COLOR, 0.34),
         borderRadius: [3, 3, 0, 0],
@@ -136,13 +189,13 @@ export function histogramOption(
       emphasis: { itemStyle: { color: alpha(OVERALL_COLOR, 0.52) } },
     },
   ];
-  if (block && block.length > 0) {
+  if (hasBlock && block) {
     series.push({
       name: `${blockLabel} (n=${block.length})`,
       type: "bar",
-      data: toShare(blockCounts, block.length),
+      data: centers.map((center, index) => [center, blockShares[index]]),
+      barWidth: "90%",
       barGap: "-100%",
-      barCategoryGap: "18%",
       itemStyle: {
         color: alpha(blockColor, 0.72),
         borderRadius: [3, 3, 0, 0],
@@ -150,6 +203,7 @@ export function histogramOption(
       emphasis: { itemStyle: { color: blockColor } },
     });
   }
+  series[series.length - 1].markLine = zeroMarkLine(t);
 
   return {
     ...baseOption(t),
@@ -165,12 +219,15 @@ export function histogramOption(
     tooltip: {
       ...tooltipBase(t),
       trigger: "axis",
-      axisPointer: { type: "shadow", shadowStyle: { color: alpha("#64748b", 0.07) } },
+      axisPointer: {
+        type: "shadow",
+        shadowStyle: { color: alpha("#64748b", 0.07) },
+      },
       formatter: (raw: unknown) => {
         const list = paramList(raw);
         const index = list[0]?.dataIndex ?? 0;
-        const from = edges[index] ?? 0;
-        const to = edges[index + 1] ?? 0;
+        const from = axis.edgesPct[index] ?? axis.minPct;
+        const to = axis.edgesPct[index + 1] ?? axis.maxPct;
         const rows = list
           .map(
             (item) =>
@@ -181,19 +238,21 @@ export function histogramOption(
               )}`,
           )
           .join("<br/>");
-        return `<div style="font-weight:600;margin-bottom:4px;">${def.label} ∈ [${pct(
-          from,
-          2,
-          false,
-        )}, ${pct(to, 2, false)}]</div>${rows}`;
+        return `<div style="font-weight:600;margin-bottom:4px;">${
+          def.label
+        } ∈ [${formatAxisPct(from)}, ${formatAxisPct(to)}]</div>${rows}`;
       },
     },
     xAxis: {
-      type: "category",
-      data: labels.map((label) => `${label}%`),
+      type: "value",
+      min: axis.minPct,
+      max: axis.maxPct,
+      splitNumber: 6,
+      ...(labelInterval == null ? {} : { interval: labelInterval }),
       axisLine: { lineStyle: { color: t.split } },
       axisTick: { show: false },
-      axisLabel: { ...axisText(t), interval: "auto" },
+      splitLine: { show: false },
+      axisLabel: pctAxisLabel(t),
     },
     yAxis: {
       type: "value",
@@ -216,8 +275,16 @@ export function ecdfOption(
   blockColor: string = BLOCK_COLORS[0],
 ): EChartsCoreOption {
   const t = theme(dark);
+  const mode = axisModeForMetric(def.key);
+  const axis = distributionAxis(
+    block && block.length > 0 ? [...overall, ...block] : overall,
+    mode,
+  );
+  const labelInterval = symmetricLabelInterval(axis, mode);
   const overallPoints = ecdfPoints(overall).map(([x, y]) => [x * 100, y]);
-  const blockPoints = block ? ecdfPoints(block).map(([x, y]) => [x * 100, y]) : [];
+  const blockPoints = block
+    ? ecdfPoints(block).map(([x, y]) => [x * 100, y])
+    : [];
   const series: Record<string, unknown>[] = [
     {
       name: `全区间 (n=${overall.length})`,
@@ -225,7 +292,11 @@ export function ecdfOption(
       step: "end",
       showSymbol: false,
       data: overallPoints,
-      lineStyle: { width: 1.6, color: alpha(OVERALL_COLOR, 0.85), type: "dashed" },
+      lineStyle: {
+        width: 1.6,
+        color: alpha(OVERALL_COLOR, 0.85),
+        type: "dashed",
+      },
       itemStyle: { color: OVERALL_COLOR },
     },
   ];
@@ -240,6 +311,7 @@ export function ecdfOption(
       itemStyle: { color: blockColor },
     });
   }
+  series[series.length - 1].markLine = zeroMarkLine(t);
 
   return {
     ...baseOption(t),
@@ -269,14 +341,14 @@ export function ecdfOption(
     },
     xAxis: {
       type: "value",
-      scale: true,
+      min: axis.minPct,
+      max: axis.maxPct,
+      splitNumber: 6,
+      ...(labelInterval == null ? {} : { interval: labelInterval }),
       axisLine: { lineStyle: { color: t.split } },
       axisTick: { show: false },
       splitLine: { lineStyle: { color: t.split } },
-      axisLabel: {
-        ...axisText(t),
-        formatter: (value: number) => `${value.toFixed(0)}%`,
-      },
+      axisLabel: pctAxisLabel(t),
     },
     yAxis: {
       type: "value",
@@ -306,6 +378,12 @@ export function blockEcdfOption(
   dark: boolean,
 ): EChartsCoreOption {
   const t = theme(dark);
+  const mode = axisModeForMetric(def.key);
+  const axis = distributionAxis(
+    [...overall, ...blocks.flatMap((block) => block.values)],
+    mode,
+  );
+  const labelInterval = symmetricLabelInterval(axis, mode);
   const series: Record<string, unknown>[] = [
     {
       name: "全区间",
@@ -313,7 +391,11 @@ export function blockEcdfOption(
       step: "end",
       showSymbol: false,
       data: ecdfPoints(overall).map(([x, y]) => [x * 100, y]),
-      lineStyle: { width: 1.5, color: alpha(OVERALL_COLOR, 0.8), type: "dashed" },
+      lineStyle: {
+        width: 1.5,
+        color: alpha(OVERALL_COLOR, 0.8),
+        type: "dashed",
+      },
       itemStyle: { color: OVERALL_COLOR },
       z: 2,
     },
@@ -328,6 +410,7 @@ export function blockEcdfOption(
       z: 3,
     })),
   ];
+  series[series.length - 1].markLine = zeroMarkLine(t);
 
   return {
     ...baseOption(t),
@@ -358,14 +441,14 @@ export function blockEcdfOption(
     },
     xAxis: {
       type: "value",
-      scale: true,
+      min: axis.minPct,
+      max: axis.maxPct,
+      splitNumber: 6,
+      ...(labelInterval == null ? {} : { interval: labelInterval }),
       axisLine: { lineStyle: { color: t.split } },
       axisTick: { show: false },
       splitLine: { lineStyle: { color: t.split } },
-      axisLabel: {
-        ...axisText(t),
-        formatter: (value: number) => `${value.toFixed(0)}%`,
-      },
+      axisLabel: pctAxisLabel(t),
     },
     yAxis: {
       type: "value",
