@@ -5,7 +5,15 @@ import type {
   SymbolHit,
 } from "./types";
 import { addDays, isIncompleteTodayBar, isValidDate } from "../date";
-import { readCache, writeCache } from "./cache";
+import {
+  coversRange,
+  mergeBars,
+  mergeCoverage,
+  readCacheWithMeta,
+  writeCache,
+  type CacheRecord,
+  type DateCoverage,
+} from "./cache";
 import { readGlobalJsonp } from "./jsonp";
 
 const SEARCH_ENDPOINT = "https://smartbox.gtimg.cn/s3/";
@@ -33,6 +41,16 @@ export interface DailySeriesResult {
   bars: DailyBar[];
   dropped: number;
   fromCache: boolean;
+  /** 网络失败时回退到过期缓存。 */
+  stale: boolean;
+  /** 缓存写入时间；实时请求为 null。 */
+  cachedAt: number | null;
+}
+
+interface CachedDailySeries {
+  bars: DailyBar[];
+  dropped: number;
+  coverage: DateCoverage[];
 }
 
 export interface QuoteSnapshot extends DailyBar {
@@ -403,7 +421,27 @@ async function fetchDailySeriesUncached(
     throw new Error("该区间内没有可用的日线数据");
   }
 
-  return { bars, dropped, fromCache: false };
+  return {
+    bars,
+    dropped,
+    fromCache: false,
+    stale: false,
+    cachedAt: null,
+  };
+}
+
+function cachedSeriesResult(
+  record: CacheRecord<CachedDailySeries>,
+  end: string,
+  stale: boolean,
+): DailySeriesResult {
+  return {
+    bars: record.data.bars.filter((bar) => bar.date <= end),
+    dropped: record.data.dropped,
+    fromCache: true,
+    stale,
+    cachedAt: record.fetchedAt,
+  };
 }
 
 export async function fetchDailySeries(
@@ -413,29 +451,59 @@ export async function fetchDailySeries(
   fq: FqMode,
   force = false,
 ): Promise<DailySeriesResult> {
-  const key = `daily|${symbol}|${fq}|${start}|${end}`;
-  if (!force) {
-    const cached = readCache<{ bars: DailyBar[]; dropped: number }>(
-      key,
-      CACHE_TTL,
-    );
-    if (cached) {
-      return { ...cached, fromCache: true };
+  const key = `daily|${symbol}|${fq}`;
+  const pendingKey = `${key}|${start}|${end}`;
+
+  // 按「标的 + 复权方式」保存一份可复用行情，切日期、P、K 时不再重复请求。
+  // 读取时不先删除过期条目，网络失败时还能回退到旧缓存。
+  const cached = force
+    ? null
+    : readCacheWithMeta<CachedDailySeries>(key, Number.POSITIVE_INFINITY);
+  if (cached) {
+    const fresh = Date.now() - cached.fetchedAt <= CACHE_TTL;
+    if (
+      fresh &&
+      cached.data.bars.length > 0 &&
+      coversRange(cached.data.coverage, start, end)
+    ) {
+      return cachedSeriesResult(cached, end, false);
     }
-    const inflight = pending.get(key);
-    if (inflight) return inflight;
   }
+  const inflight = pending.get(pendingKey);
+  if (inflight) return inflight;
 
   const task = fetchDailySeriesUncached(symbol, start, end, fq)
     .then((result) => {
-      writeCache(key, { bars: result.bars, dropped: result.dropped });
+      const existing = force
+        ? null
+        : readCacheWithMeta<CachedDailySeries>(
+            key,
+            Number.POSITIVE_INFINITY,
+          );
+      // 前复权历史价格会随分红送转变化，过期缓存不再与新数据混用。
+      const mergeable =
+        existing && Date.now() - existing.fetchedAt <= CACHE_TTL
+          ? existing.data
+          : null;
+      const entry: CachedDailySeries = {
+        bars: mergeBars(mergeable?.bars ?? [], result.bars),
+        dropped: result.dropped,
+        coverage: mergeCoverage(mergeable?.coverage ?? [], { start, end }),
+      };
+      writeCache(key, entry);
       return result;
     })
+    .catch((reason: unknown) => {
+      if (cached && coversRange(cached.data.coverage, start, end)) {
+        return cachedSeriesResult(cached, end, true);
+      }
+      throw reason;
+    })
     .finally(() => {
-      pending.delete(key);
+      pending.delete(pendingKey);
     });
 
-  pending.set(key, task);
+  pending.set(pendingKey, task);
   return task;
 }
 

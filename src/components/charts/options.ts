@@ -7,6 +7,7 @@ import {
   boxStats,
   ecdfPoints,
   histogramWithEdges,
+  twoSidedEcdfPoints,
 } from "@/lib/stats/describe";
 import {
   axisModeForMetric,
@@ -319,6 +320,33 @@ export function histogramOption(
   };
 }
 
+function ecdfPointsForMode(
+  values: number[],
+  mode: DistributionAxisMode,
+): Array<[number, number]> {
+  return mode === "symmetric"
+    ? twoSidedEcdfPoints(values)
+    : ecdfPoints(values);
+}
+
+function ecdfStep(
+  mode: DistributionAxisMode,
+): Record<string, unknown> {
+  return mode === "symmetric" ? {} : { step: "end" };
+}
+
+function ecdfTooltipCopy(
+  mode: DistributionAxisMode,
+  xPct: number,
+): { relation: string; label: string } {
+  if (mode === "symmetric") {
+    if (xPct < 0) return { relation: "≤", label: "负侧累计" };
+    if (xPct > 0) return { relation: "≥", label: "正侧累计" };
+    return { relation: "=", label: "0 轴汇合" };
+  }
+  return { relation: "≤", label: "累计占比" };
+}
+
 export function ecdfOption(
   overall: number[],
   block: number[] | null,
@@ -337,15 +365,18 @@ export function ecdfOption(
     mode,
   );
   const labelInterval = symmetricLabelInterval(axis, mode);
-  const overallPoints = ecdfPoints(overall).map(([x, y]) => [x * 100, y]);
+  const overallPoints = ecdfPointsForMode(overall, mode).map(([x, y]) => [
+    x * 100,
+    y,
+  ]);
   const blockPoints = block
-    ? ecdfPoints(block).map(([x, y]) => [x * 100, y])
+    ? ecdfPointsForMode(block, mode).map(([x, y]) => [x * 100, y])
     : [];
   const series: Record<string, unknown>[] = [
     {
       name: `全区间 (n=${overall.length})`,
       type: "line",
-      step: "end",
+      ...ecdfStep(mode),
       showSymbol: false,
       data: overallPoints,
       lineStyle: {
@@ -360,7 +391,7 @@ export function ecdfOption(
     series.push({
       name: `${blockLabel} (n=${block.length})`,
       type: "line",
-      step: "end",
+      ...ecdfStep(mode),
       showSymbol: false,
       data: blockPoints,
       lineStyle: { width: 2, color: blockColor },
@@ -388,11 +419,12 @@ export function ecdfOption(
         const value = item?.value;
         const x = Array.isArray(value) ? Number(value[0]) : 0;
         const y = Array.isArray(value) ? Number(value[1]) : 0;
+        const copy = ecdfTooltipCopy(mode, x);
         return `${dot(item?.color)}${item?.seriesName ?? ""}<br/>${
           def.label
-        } ≤ <b>${pp(x, 2, def.signed)}</b><br/>累计占比 <b>${(y * 100).toFixed(
-          1,
-        )}%</b>`;
+        } ${copy.relation} <b>${pp(x, 2, def.signed)}</b><br/>${
+          copy.label
+        } <b>${(y * 100).toFixed(1)}%</b>`;
       },
     },
     xAxis: {
@@ -444,9 +476,9 @@ export function blockEcdfOption(
     {
       name: "全区间",
       type: "line",
-      step: "end",
+      ...ecdfStep(mode),
       showSymbol: false,
-      data: ecdfPoints(overall).map(([x, y]) => [x * 100, y]),
+      data: ecdfPointsForMode(overall, mode).map(([x, y]) => [x * 100, y]),
       lineStyle: {
         width: 1.5,
         color: alpha(OVERALL_COLOR, 0.8),
@@ -458,9 +490,12 @@ export function blockEcdfOption(
     ...blocks.map((block) => ({
       name: block.label,
       type: "line",
-      step: "end",
+      ...ecdfStep(mode),
       showSymbol: false,
-      data: ecdfPoints(block.values).map(([x, y]) => [x * 100, y]),
+      data: ecdfPointsForMode(block.values, mode).map(([x, y]) => [
+        x * 100,
+        y,
+      ]),
       lineStyle: { width: 2, color: block.color },
       itemStyle: { color: block.color },
       z: 3,
@@ -488,11 +523,12 @@ export function blockEcdfOption(
         const value = item?.value;
         const x = Array.isArray(value) ? Number(value[0]) : 0;
         const y = Array.isArray(value) ? Number(value[1]) : 0;
+        const copy = ecdfTooltipCopy(mode, x);
         return `${dot(item?.color)}${item?.seriesName ?? ""}<br/>${
           def.label
-        } ≤ <b>${pp(x, 2, def.signed)}</b><br/>累计占比 <b>${(y * 100).toFixed(
-          1,
-        )}%</b>`;
+        } ${copy.relation} <b>${pp(x, 2, def.signed)}</b><br/>${
+          copy.label
+        } <b>${(y * 100).toFixed(1)}%</b>`;
       },
     },
     xAxis: {

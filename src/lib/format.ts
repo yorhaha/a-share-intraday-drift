@@ -56,6 +56,17 @@ export function fmtInt(value: number | null | undefined): string {
   return Math.round(value).toLocaleString("zh-CN");
 }
 
+/** 将毫秒时长转成「刚刚 / N 分钟前 / N 小时前」这类简短文案。 */
+export function fmtRelativeTime(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return "未知";
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 1) return "刚刚";
+  if (minutes < 60) return `${minutes} 分钟前`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} 小时前`;
+  return `${Math.floor(hours / 24)} 天前`;
+}
+
 export function fmtNum(
   value: number | null | undefined,
   digits = 2,

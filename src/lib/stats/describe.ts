@@ -142,7 +142,60 @@ export function ecdfPoints(
   return points;
 }
 
-/** 历史样本中不大于给定值的比例，与 ECDF 的纵轴口径一致。 */
+/**
+ * 双侧累计分布：负侧从最左端向 0 轴累计，正侧从最右端向 0 轴累计，
+ * 两侧各自以同侧样本归一化，因此在 0 轴汇合到 100%。
+ *
+ * 返回的是带竖直线段的折线点：
+ * - 负侧按 CDF 方向从左向右；
+ * - 正侧按生存函数方向从右向左；
+ * - 0 值只落在 0 轴，不参与任一侧的分母。
+ */
+export function twoSidedEcdfPoints(
+  values: number[],
+): Array<[number, number]> {
+  const clean = finiteValues(values);
+  if (clean.length === 0) return [];
+  const negatives = clean.filter((value) => value < 0).sort((a, b) => a - b);
+  const positives = clean.filter((value) => value > 0).sort((a, b) => a - b);
+  const points: Array<[number, number]> = [];
+
+  if (negatives.length > 0) {
+    let cumulative = 0;
+    let i = 0;
+    while (i < negatives.length) {
+      let j = i;
+      while (j + 1 < negatives.length && negatives[j + 1] === negatives[i]) {
+        j += 1;
+      }
+      points.push([negatives[i], cumulative / negatives.length]);
+      cumulative += j - i + 1;
+      points.push([negatives[i], cumulative / negatives.length]);
+      i = j + 1;
+    }
+    points.push([0, 1]);
+  }
+
+  if (positives.length > 0) {
+    if (points.length === 0) points.push([0, 1]);
+    let remaining = positives.length;
+    let i = 0;
+    while (i < positives.length) {
+      let j = i;
+      while (j + 1 < positives.length && positives[j + 1] === positives[i]) {
+        j += 1;
+      }
+      points.push([positives[i], remaining / positives.length]);
+      remaining -= j - i + 1;
+      points.push([positives[i], remaining / positives.length]);
+      i = j + 1;
+    }
+  }
+
+  return points.length > 0 ? points : [[0, 1]];
+}
+
+/** 历史样本中不大于给定值的比例，与常规 ECDF 的纵轴口径一致。 */
 export function percentileRank(values: number[], value: number): number {
   const clean = finiteValues(values);
   if (clean.length === 0 || !Number.isFinite(value)) return NaN;
@@ -151,6 +204,27 @@ export function percentileRank(values: number[], value: number): number {
     if (item <= value) count += 1;
   }
   return count / clean.length;
+}
+
+/**
+ * 双侧累计图的同侧分位：负值取负侧 ≤ 该值的比例，
+ * 正值取正侧 ≥ 该值的比例，0 值固定在 0 轴（100%）。
+ * 分母不含 0 值，和 twoSidedEcdfPoints 的口径一致。
+ */
+export function sidePercentileRank(values: number[], value: number): number {
+  if (!Number.isFinite(value)) return NaN;
+  if (value === 0) return 1;
+  const clean = finiteValues(values);
+  const side =
+    value < 0
+      ? clean.filter((item) => item < 0)
+      : clean.filter((item) => item > 0);
+  if (side.length === 0) return NaN;
+  let count = 0;
+  for (const item of side) {
+    if (value < 0 ? item <= value : item >= value) count += 1;
+  }
+  return count / side.length;
 }
 
 export interface HistogramBin {

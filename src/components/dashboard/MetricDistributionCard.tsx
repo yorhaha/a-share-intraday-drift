@@ -11,7 +11,8 @@ import { BLOCK_COLORS } from "@/lib/constants";
 import type { DailyMetrics, MetricDef, PeriodBlock } from "@/lib/data/types";
 import type { MarketSnapshot } from "@/lib/session";
 import type { MetricDrift } from "@/lib/stats/drift";
-import { describe, percentileRank } from "@/lib/stats/describe";
+import { describe, percentileRank, sidePercentileRank } from "@/lib/stats/describe";
+import { axisModeForMetric } from "@/lib/stats/distribution";
 import { cx, fmtQ, pct, pp } from "@/lib/format";
 
 interface MetricDistributionCardProps {
@@ -123,6 +124,16 @@ export default function MetricDistributionCard({
       block: block ? percentileRank(blockValues, sessionMarker.value) : NaN,
     };
   }, [sessionMarker, overall, blockValues, block]);
+  const sessionSideRank = useMemo(() => {
+    if (
+      !sessionMarker ||
+      chartMode !== "ecdf" ||
+      axisModeForMetric(def.key) !== "symmetric"
+    ) {
+      return NaN;
+    }
+    return sidePercentileRank(overall, sessionMarker.value);
+  }, [sessionMarker, chartMode, def.key, overall]);
   const badge = badgeFor(drift);
 
   return (
@@ -168,6 +179,14 @@ export default function MetricDistributionCard({
             >
               历史分位 {rankText(sessionRanks.overall)}
             </span>
+            {Number.isFinite(sessionSideRank) ? (
+              <span
+                className="faint num"
+                title="与累积分布纵轴一致：正值按正侧 ≥ 该值，负值按负侧 ≤ 该值"
+              >
+                同侧分位 {rankText(sessionSideRank)}
+              </span>
+            ) : null}
             {block ? (
               <span
                 className="faint num"

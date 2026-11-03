@@ -24,7 +24,7 @@ import type { FqMode, MetricKey, SymbolHit } from "@/lib/data/types";
 import { addMonths, isValidDate, todayShanghai } from "@/lib/date";
 import { buildMarketSnapshot, type MarketSnapshot } from "@/lib/session";
 import { downloadCsv } from "@/lib/csv";
-import { fmtInt } from "@/lib/format";
+import { fmtInt, fmtRelativeTime } from "@/lib/format";
 
 type ChartMode = "hist" | "ecdf";
 
@@ -500,6 +500,21 @@ export default function Dashboard() {
                     <span className="status-dot" />
                     已计算 {fmtInt(analysis.rangeMetrics.length)} 个交易日 ·{" "}
                     {analysis.blockResult.effectiveK} 段
+                    {analysis.fromCache ? (
+                      <span
+                        className="cache-flag"
+                        title={
+                          analysis.staleCache
+                            ? "行情接口请求失败，当前展示的是浏览器本地缓存"
+                            : "行情来自浏览器本地缓存，6 小时内复用；可在控制面板刷新"
+                        }
+                      >
+                        {analysis.staleCache ? "缓存兜底" : "本地缓存"}
+                        {analysis.cacheAgeMs != null
+                          ? ` · ${fmtRelativeTime(analysis.cacheAgeMs)}`
+                          : ""}
+                      </span>
+                    ) : null}
                   </>
                 )}
               </div>

@@ -70,6 +70,8 @@ describe("buildCsv", () => {
       dataAsOf: "2024-01-03",
       warnings: [],
       fromCache: false,
+      staleCache: false,
+      cacheAgeMs: null,
     } satisfies AnalysisResult;
 
     const csv = buildCsv(analysis);

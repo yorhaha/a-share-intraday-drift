@@ -56,6 +56,9 @@ export default function DistributionGrid({
             灰色为所选区间的整体分布，彩色为当前周期
             {selectedBlock ? ` ${selectedBlock.label}` : "（未选中）"}
             。点击卡片标题或「看漂移」可跳到该指标的周期对比。
+            {chartMode === "ecdf"
+              ? " 累积分布中，正负双侧指标从两端分别向 0 轴累计并在 0 轴汇合；单侧指标按常规 ECDF 累计。"
+              : ""}
           </p>
         </div>
         <div className="seg section-actions" role="group" aria-label="图表类型">

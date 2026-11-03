@@ -9,6 +9,7 @@ import { fetchDailySeries } from "./data/tencent";
 import { computeMetrics, filterMetricsByRange } from "./metrics";
 import { buildPeriods } from "./periods";
 import { analyzeDrift, type DriftAnalysis } from "./stats/drift";
+import { fmtRelativeTime } from "./format";
 
 export interface AnalysisOptions {
   symbol: SymbolHit;
@@ -31,6 +32,8 @@ export interface AnalysisResult {
   dataAsOf: string;
   warnings: string[];
   fromCache: boolean;
+  staleCache: boolean;
+  cacheAgeMs: number | null;
 }
 
 export async function runAnalysis(
@@ -83,8 +86,12 @@ export async function runAnalysis(
       );
     }
   }
-  if (series.fromCache) {
-    warnings.push("本次使用本地缓存行情，可能不是最新数据。");
+  if (series.stale && series.cachedAt != null) {
+    warnings.push(
+      `行情请求失败，当前显示 ${fmtRelativeTime(
+        Date.now() - series.cachedAt,
+      )}的本地缓存。`,
+    );
   }
 
   const allWarnings = [...new Set([...warnings, ...drift.warnings])];
@@ -99,5 +106,8 @@ export async function runAnalysis(
     dataAsOf: rangeMetrics[rangeMetrics.length - 1].date,
     warnings: allWarnings,
     fromCache: series.fromCache,
+    staleCache: series.stale,
+    cacheAgeMs:
+      series.cachedAt == null ? null : Date.now() - series.cachedAt,
   };
 }
