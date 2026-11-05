@@ -41,10 +41,7 @@ function badgeFor(drift: MetricDrift | undefined): {
   if (drift.globalQ != null && drift.globalQ < 0.05) {
     return { text: `显著 q=${fmtQ(drift.globalQ)}`, className: "badge-sig" };
   }
-  return {
-    text: `未见漂移 q=${fmtQ(drift.globalQ)}`,
-    className: "badge-muted",
-  };
+  return { text: `q=${fmtQ(drift.globalQ)}`, className: "badge-muted" };
 }
 
 function rankText(rank: number): string {
@@ -139,23 +136,17 @@ export default function MetricDistributionCard({
   return (
     <article className={cx("card metric-card", active && "is-active")}>
       <div className="metric-card-head">
-        <div className="metric-title-wrap">
-          <div className="metric-title-row">
-            <h3 className="metric-title">{def.label}</h3>
-            <span className="help-tip" title={def.description}>
-              ?
-            </span>
-            <span className={cx("badge", badge.className)}>{badge.text}</span>
-          </div>
-          <p className="metric-desc">{def.description}</p>
+        <div className="metric-title-row">
+          <h3 className="metric-title">{def.label}</h3>
+          <span className={cx("badge", badge.className)}>{badge.text}</span>
         </div>
         <button
           type="button"
           className="metric-focus"
           onClick={onSelect}
-          aria-label={`在漂移详情中查看${def.label}`}
+          aria-label={`查看${def.label}的漂移详情`}
         >
-          {active ? "详情中" : "看漂移"}
+          详情
         </button>
       </div>
 
@@ -177,14 +168,14 @@ export default function MetricDistributionCard({
               className="faint num"
               title="全区间历史样本中不超过该值的比例"
             >
-              历史分位 {rankText(sessionRanks.overall)}
+              历史 {rankText(sessionRanks.overall)}
             </span>
             {Number.isFinite(sessionSideRank) ? (
               <span
                 className="faint num"
-                title="与累积分布纵轴一致：正值按正侧 ≥ 该值，负值按负侧 ≤ 该值"
+                title="正值按正侧 ≥ 该值，负值按负侧 ≤ 该值，与累积分布纵轴一致"
               >
-                同侧分位 {rankText(sessionSideRank)}
+                同侧 {rankText(sessionSideRank)}
               </span>
             ) : null}
             {block ? (
@@ -192,7 +183,7 @@ export default function MetricDistributionCard({
                 className="faint num"
                 title={`${block.label}样本中不超过该值的比例`}
               >
-                周期分位 {rankText(sessionRanks.block)}
+                周期 {rankText(sessionRanks.block)}
               </span>
             ) : null}
           </div>

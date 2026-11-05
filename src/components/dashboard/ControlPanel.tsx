@@ -46,48 +46,47 @@ export default function ControlPanel({
   onRefresh,
 }: ControlPanelProps) {
   return (
-    <section className="card control-panel fade-in" aria-label="分析参数">
+    <div className="control-panel" aria-label="分析参数">
       <div className="control-main">
         <div className="control-field control-field-range">
-          <span className="control-label">日期区间</span>
-          <div className="seg control-seg">
-            {RANGE_PRESETS.map((preset) => (
-              <button
-                key={preset.key}
-                type="button"
-                data-active={rangePreset === preset.key}
-                onClick={() => onPreset(preset.key)}
-              >
-                {preset.label}
-              </button>
-            ))}
+          <span className="control-label">日期</span>
+          <div className="control-inline">
+            <div className="seg control-seg">
+              {RANGE_PRESETS.map((preset) => (
+                <button
+                  key={preset.key}
+                  type="button"
+                  data-active={rangePreset === preset.key}
+                  onClick={() => onPreset(preset.key)}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+            <div className="date-range">
+              <input
+                className="input date-input"
+                type="date"
+                value={start}
+                max={end}
+                onChange={(event) => onStart(event.target.value)}
+                aria-label="开始日期"
+              />
+              <span className="date-arrow">→</span>
+              <input
+                className="input date-input"
+                type="date"
+                value={end}
+                min={start}
+                onChange={(event) => onEnd(event.target.value)}
+                aria-label="结束日期"
+              />
+            </div>
           </div>
-          <div className="date-range">
-            <input
-              className="input date-input"
-              type="date"
-              value={start}
-              max={end}
-              onChange={(event) => onStart(event.target.value)}
-              aria-label="开始日期"
-            />
-            <span className="date-arrow">→</span>
-            <input
-              className="input date-input"
-              type="date"
-              value={end}
-              min={start}
-              onChange={(event) => onEnd(event.target.value)}
-              aria-label="结束日期"
-            />
-          </div>
-          {rangePreset === "custom" ? (
-            <span className="control-hint">自定义</span>
-          ) : null}
         </div>
 
         <div className="control-field">
-          <span className="control-label">周期长度</span>
+          <span className="control-label">周期</span>
           <div className="control-inline">
             <div className="seg control-seg">
               {PERIOD_PRESETS.map((preset) => (
@@ -114,12 +113,11 @@ export default function ControlPanel({
               }}
               aria-label="每段交易日数"
             />
-            <span className="control-hint">交易日 ≈ {(p / 20).toFixed(1)} 个月</span>
           </div>
         </div>
 
         <div className="control-field control-field-compact">
-          <span className="control-label">对比段数</span>
+          <span className="control-label">对比</span>
           <select
             className="select k-select"
             value={k}
@@ -135,7 +133,7 @@ export default function ControlPanel({
         </div>
 
         <div className="control-field control-field-compact">
-          <span className="control-label">复权方式</span>
+          <span className="control-label">复权</span>
           <div className="seg control-seg">
             <button
               type="button"
@@ -170,20 +168,32 @@ export default function ControlPanel({
             disabled={loading}
             title="清空本地行情缓存并重新请求"
           >
-            <span className={cx("refresh-icon", loading && "is-spinning")} aria-hidden="true">
-              ↻
-            </span>
-            {loading ? "更新中" : "刷新行情"}
+            <svg
+              className={cx("icon", loading && "is-spinning")}
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              aria-hidden="true"
+            >
+              <path
+                d="M20 12a8 8 0 1 1-2.34-5.66"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+              />
+              <path
+                d="M20 4v6h-6"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            {loading ? "更新中" : "刷新"}
           </button>
         </div>
       </div>
-
-      <p className="control-note">
-        周期按交易日切块：取区间末尾的 K × P 个交易日，从旧到新切成 K 段；更早的交易日只作为分布背景。
-        {excludeZeroRange
-          ? " 已剔除最高价等于最低价的交易日，段边界不变。"
-          : " 默认保留零振幅日（最高价 = 最低价）。"}
-      </p>
-    </section>
+    </div>
   );
 }

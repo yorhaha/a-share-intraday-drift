@@ -33,7 +33,7 @@ function LoadingSkeleton() {
     <div className="loading-state" aria-live="polite">
       <div className="loading-copy">
         <span className="live-dot" />
-        正在拉取日线并计算分布，首次加载可能需要几秒…
+        正在加载
       </div>
       <div className="tiles">
         {[0, 1, 2, 3, 4].map((index) => (
@@ -65,7 +65,7 @@ function Warnings({ items }: { items: string[] }) {
         !
       </span>
       <div>
-        <strong>数据与检验提示</strong>
+        <strong>数据提示</strong>
         <ul>
           {items.map((item) => (
             <li key={item}>{item}</li>
@@ -371,93 +371,84 @@ export default function Dashboard() {
                 />
               </svg>
             </span>
-            <div>
-              <div className="brand-title">A股日内分布</div>
-              <div className="brand-sub">Market Dist</div>
-            </div>
+            <span className="brand-title">A股日内分布</span>
           </div>
-          <div className="topbar-actions">
-            <span className="topbar-note">公开行情 · 浏览器本地计算</span>
-            <button
-              type="button"
-              className="btn btn-sm btn-ghost theme-btn"
-              onClick={toggleTheme}
-              aria-label={dark ? "切换到浅色模式" : "切换到深色模式"}
-              title={dark ? "切换到浅色模式" : "切换到深色模式"}
-            >
-              <span aria-hidden="true">{dark ? "☀" : "☾"}</span>
-              {dark ? "浅色" : "深色"}
-            </button>
-          </div>
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={toggleTheme}
+            aria-label={dark ? "切换到浅色模式" : "切换到深色模式"}
+            title={dark ? "切换到浅色模式" : "切换到深色模式"}
+          >
+            {dark ? (
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                aria-hidden="true"
+              >
+                <circle
+                  cx="12"
+                  cy="12"
+                  r="4"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                />
+                <path
+                  d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.66 6.34l1.41-1.41"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                />
+              </svg>
+            ) : (
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                aria-hidden="true"
+              >
+                <path
+                  d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5a8.5 8.5 0 1 0 11 11Z"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            )}
+          </button>
         </div>
       </header>
 
       <main className="page-shell">
-        <section className="hero">
-          <div className="hero-copy">
-            <span className="section-kicker">
-              A-SHARE INTRADAY DISTRIBUTION
-            </span>
-            <h1>
-              看懂一只股票的
-              <span className="hero-accent">日内性格</span>
-            </h1>
-            <p>
-              输入任意 A 股，观察开盘、最高、最低、振幅等六项日内指标的分布。
-              再按你设定的周期切块，检验最近几段的分布是否发生了显著漂移。
-            </p>
-            <div className="hero-points">
-              <span>六项指标</span>
-              <span>KS 置换检验</span>
-              <span>BH-FDR 校正</span>
-              <span>bootstrap CI</span>
-            </div>
-          </div>
-
-          <div className="hero-search">
-            <span className="hero-search-label">标的</span>
-            <SymbolSearch
-              key={symbol.symbol}
-              selected={symbol}
-              onSelect={handleSelectSymbol}
-            />
-            <div className="hero-search-foot">
-              <span>
-                当前：
-                <strong>{symbol.name}</strong>{" "}
-                <span className="mono faint">
-                  {symbol.symbol.toUpperCase()}
-                </span>
-              </span>
-              <button
-                type="button"
-                className="example-chip"
-                onClick={() => handleSelectSymbol(DEMO_SYMBOL)}
-              >
-                示例 · 中国平安
-              </button>
-            </div>
-          </div>
+        <h1 className="sr-only">A股日内分布与漂移</h1>
+        <section className="query-panel card" aria-label="查询条件">
+          <SymbolSearch
+            key={symbol.symbol}
+            selected={symbol}
+            onSelect={handleSelectSymbol}
+          />
+          <ControlPanel
+            start={start}
+            end={end}
+            p={p}
+            k={k}
+            fq={fq}
+            excludeZeroRange={excludeZeroRange}
+            rangePreset={rangePreset}
+            loading={loading}
+            onStart={handleStart}
+            onEnd={handleEnd}
+            onPreset={handlePreset}
+            onP={handleP}
+            onK={handleK}
+            onFq={handleFq}
+            onExclude={handleExclude}
+            onRefresh={handleRefresh}
+          />
         </section>
-
-        <ControlPanel
-          start={start}
-          end={end}
-          p={p}
-          k={k}
-          fq={fq}
-          excludeZeroRange={excludeZeroRange}
-          rangePreset={rangePreset}
-          loading={loading}
-          onStart={handleStart}
-          onEnd={handleEnd}
-          onPreset={handlePreset}
-          onP={handleP}
-          onK={handleK}
-          onFq={handleFq}
-          onExclude={handleExclude}
-          onRefresh={handleRefresh}
-        />
 
         {error ? (
           <div className="error-banner card" role="alert">
@@ -481,8 +472,8 @@ export default function Dashboard() {
 
         {!analysis && !loading && !error ? (
           <div className="card empty-block">
-            <strong>还没有可展示的数据</strong>
-            <p>请选择一只 A 股，或调整日期区间后重试。</p>
+            <strong>暂无数据</strong>
+            <p>调整日期区间后重试。</p>
           </div>
         ) : null}
 
@@ -493,20 +484,20 @@ export default function Dashboard() {
                 {loading ? (
                   <>
                     <span className="live-dot" />
-                    参数已变化，正在更新…
+                    正在更新
                   </>
                 ) : (
                   <>
                     <span className="status-dot" />
-                    已计算 {fmtInt(analysis.rangeMetrics.length)} 个交易日 ·{" "}
+                    {fmtInt(analysis.rangeMetrics.length)} 个交易日 ·{" "}
                     {analysis.blockResult.effectiveK} 段
                     {analysis.fromCache ? (
                       <span
                         className="cache-flag"
                         title={
                           analysis.staleCache
-                            ? "行情接口请求失败，当前展示的是浏览器本地缓存"
-                            : "行情来自浏览器本地缓存，6 小时内复用；可在控制面板刷新"
+                            ? "行情接口请求失败，展示本地缓存"
+                            : "浏览器本地缓存，6 小时内复用"
                         }
                       >
                         {analysis.staleCache ? "缓存兜底" : "本地缓存"}
@@ -523,7 +514,7 @@ export default function Dashboard() {
                 className="btn btn-sm"
                 onClick={() => downloadCsv(analysis)}
               >
-                导出明细 CSV
+                导出 CSV
               </button>
             </div>
 
@@ -561,8 +552,7 @@ export default function Dashboard() {
         ) : null}
 
         <footer className="footer">
-          <span>数据来自腾讯公开行情接口，统计与图表在浏览器端完成。</span>
-          <span>本工具仅用于研究与数据观察，不构成投资建议。</span>
+          腾讯公开行情接口 · 浏览器本地计算 · 仅供研究，不构成投资建议
         </footer>
       </main>
     </>

@@ -67,14 +67,7 @@ export default function TimeSeriesGrid({ analysis, dark }: { analysis: AnalysisR
   return (
     <section className="section" id="timeseries">
       <div className="section-head">
-        <div>
-          <span className="section-kicker">03 · 时间序列</span>
-          <h2 className="section-title">逐日走势与周期划分</h2>
-          <p className="section-sub">
-            六项指标的逐交易日序列。底色标出最近 {blocks.length} 个周期，虚线为
-            0；悬停查看具体日期和数值。
-          </p>
-        </div>
+        <h2 className="section-title">时间序列</h2>
         <div className="block-legend">
           {analysis.blockResult.blocks.map((block, index) => (
             <span className="block-legend-item" key={block.index}>

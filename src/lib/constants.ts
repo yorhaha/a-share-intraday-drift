@@ -101,4 +101,4 @@ export const BLOCK_COLORS = [
   "#64748b",
 ];
 
-export const OVERALL_COLOR = "#94a3b8";
+export const OVERALL_COLOR = "#a1a1aa";

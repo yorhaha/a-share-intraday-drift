@@ -22,7 +22,7 @@ import type { MetricDrift } from "@/lib/stats/drift";
 import { pct, pp } from "@/lib/format";
 
 const FONT =
-  'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif';
+  '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif';
 
 interface ChartTheme {
   axis: string;
@@ -38,23 +38,23 @@ interface ChartTheme {
 function theme(dark: boolean): ChartTheme {
   return dark
     ? {
-        axis: "#8e9aac",
-        split: "rgba(148, 163, 184, 0.14)",
-        tooltipBg: "#151d2a",
-        tooltipBorder: "#2b3648",
-        tooltipText: "#e8edf5",
-        subText: "#aab4c3",
-        session: "#f8fafc",
-        sessionText: "#0b1220",
+        axis: "#a1a1aa",
+        split: "rgba(255, 255, 255, 0.08)",
+        tooltipBg: "#1a1a1d",
+        tooltipBorder: "#2e2e33",
+        tooltipText: "#fafafa",
+        subText: "#a1a1aa",
+        session: "#fafafa",
+        sessionText: "#09090b",
       }
     : {
-        axis: "#7a8496",
-        split: "rgba(100, 116, 139, 0.13)",
+        axis: "#71717a",
+        split: "rgba(0, 0, 0, 0.06)",
         tooltipBg: "#ffffff",
-        tooltipBorder: "#e3e8ef",
-        tooltipText: "#172033",
-        subText: "#5d6878",
-        session: "#111827",
+        tooltipBorder: "#e4e4e7",
+        tooltipText: "#18181b",
+        subText: "#52525b",
+        session: "#18181b",
         sessionText: "#ffffff",
       };
 }
@@ -677,7 +677,11 @@ export function medianTrendOption(
   );
   const bands = highs.map((high, index) => Math.max(0, high - lows[index]));
   const accent =
-    drift.globalQ != null && drift.globalQ < 0.05 ? "#e0574b" : BLOCK_COLORS[0];
+    drift.globalQ != null && drift.globalQ < 0.05
+      ? dark
+        ? "#b79cff"
+        : "#7c3aed"
+      : BLOCK_COLORS[0];
 
   const series: Record<string, unknown>[] = [
     {

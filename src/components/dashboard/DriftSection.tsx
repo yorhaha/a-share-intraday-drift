@@ -34,17 +34,15 @@ function buildConclusion(analysis: AnalysisResult): Conclusion {
   if (drift.metrics.length === 0) {
     return {
       tone: "warn",
-      headline: "完整周期不足 2 段，无法进行漂移检验。",
-      detail:
-        "请拉长日期区间，或把周期长度缩短到区间能容纳至少 2 段。当前只有整体分布可看。",
+      headline: "周期不足",
+      detail: "至少需要 2 个完整周期。",
     };
   }
   if (drift.testedMetrics === 0) {
     return {
       tone: "warn",
-      headline: "所有指标的有效样本都不足，暂不做漂移检验。",
-      detail:
-        "至少需要每段 10 个有效交易日。可拉长区间、缩短周期，或不要过早剔除零振幅日。",
+      headline: "样本不足",
+      detail: "每段至少需要 10 个有效交易日。",
     };
   }
   const significant = drift.metrics.filter(
@@ -53,9 +51,8 @@ function buildConclusion(analysis: AnalysisResult): Conclusion {
   if (significant.length === 0) {
     return {
       tone: "none",
-      headline: `在当前样本下，${drift.testedMetrics} 项可检验指标均未检出显著分布漂移。`,
-      detail:
-        "BH 校正后的 q 均不小于 0.05。这不等于分布完全没变，只是当前样本量提供的证据不足；仍可看首末差与置信区间判断变化方向。",
+      headline: "未检出显著漂移",
+      detail: `${drift.testedMetrics} 项可检验指标 BH 校正后 q ≥ 0.05。`,
     };
   }
 
@@ -69,38 +66,27 @@ function buildConclusion(analysis: AnalysisResult): Conclusion {
   const adj = lead.significantAdjacent[0];
   const names = significant.map((item) => item.label).join("、");
 
-  let headline = `${names} 检出显著分布漂移。`;
+  const headline = `${names} 显著漂移`;
+  let detail = "";
   if (leadFirst && leadLast && lead.delta != null) {
-    headline += `${lead.label} 的中位数从 ${leadFirst.label} 的 ${pct(
-      leadFirst.median,
-      2,
-      true,
-    )} 变为 ${leadLast.label} 的 ${pct(
+    detail = `${lead.label}中位数 ${pct(leadFirst.median, 2, true)} → ${pct(
       leadLast.median,
       2,
       true,
     )}，首末差 ${pp(lead.delta * 100, 2, true)}`;
     if (lead.deltaCI) {
-      headline += `（95% CI ${pp(
-        lead.deltaCI[0] * 100,
+      detail += `（95% CI ${pp(lead.deltaCI[0] * 100, 2, true)} ~ ${pp(
+        lead.deltaCI[1] * 100,
         2,
         true,
-      )} ~ ${pp(lead.deltaCI[1] * 100, 2, true)}）`;
+      )}）`;
     }
-    headline += `，q = ${fmtQ(lead.globalQ)}。`;
+    detail += `，q = ${fmtQ(lead.globalQ)}`;
   } else {
-    headline += `以 ${lead.label} 的 q 最小（${fmtQ(
-      lead.globalQ,
-    )}），但其漂移不体现在中位数上。`;
+    detail = `${lead.label} q = ${fmtQ(lead.globalQ)}`;
   }
-
-  let detail = `显著指标共 ${significant.length} 项：${names}。统计显著不等于幅度大，请同时看首末差、95% CI 和 KS D。`;
   if (adj) {
-    detail = `${lead.label} 最明显的相邻变化发生在 ${adj.fromLabel}→${
-      adj.toLabel
-    }（KS D = ${adj.d.toFixed(2)}，校正后 q = ${fmtQ(
-      adj.q,
-    )}）。${detail}`;
+    detail += ` · 相邻 ${adj.fromLabel}→${adj.toLabel} D=${adj.d.toFixed(2)}`;
   }
   return { tone: "sig", headline, detail };
 }
@@ -160,16 +146,13 @@ export default function DriftSection({
     return (
       <section className="section" id="drift-detail">
         <div className="section-head">
-          <div>
-            <span className="section-kicker">02 · 漂移</span>
-            <h2 className="section-title">最近周期是否发生了显著变化？</h2>
-          </div>
+          <h2 className="section-title">漂移</h2>
         </div>
         <div className="card empty-block">
-          <strong>无法切出至少 2 个完整周期</strong>
+          <strong>周期不足</strong>
           <p>
             {analysis.blockResult.warnings[0] ??
-              "请拉长日期区间，或缩短周期长度。"}
+              "拉长日期区间，或缩短周期长度。"}
           </p>
         </div>
       </section>
@@ -182,24 +165,14 @@ export default function DriftSection({
   return (
     <section className="section" id="drift-detail">
       <div className="section-head">
-        <div>
-          <span className="section-kicker">02 · 漂移</span>
-          <h2 className="section-title">最近 {blocks.length} 段的分布是否变了？</h2>
-          <p className="section-sub">
-            每项指标在 K 段之间做最大两两 KS 距离的置换检验（999
-            次），六项指标一起做 BH-FDR 校正；q &lt; 0.05
-            视为显著。相邻段检验用于定位变化发生的区间，属于探索性分析。
-          </p>
-        </div>
+        <h2 className="section-title">漂移</h2>
         <span className="badge badge-muted">
           {blocks[0]?.startDate} ~ {blocks[blocks.length - 1]?.endDate}
         </span>
       </div>
 
       <div className={cx("conclusion", `conclusion-${conclusion.tone}`)}>
-        <span className="conclusion-mark" aria-hidden="true">
-          {conclusion.tone === "sig" ? "!" : conclusion.tone === "warn" ? "?" : "✓"}
-        </span>
+        <span className="conclusion-mark" aria-hidden="true" />
         <div>
           <strong>{conclusion.headline}</strong>
           <p>{conclusion.detail}</p>
@@ -215,42 +188,30 @@ export default function DriftSection({
       {selected && ecdfOpt && boxOpt && trendOpt ? (
         <div className="card detail-card" id="drift-detail-panel">
           <div className="detail-head">
-            <div>
-              <span className="section-kicker">指标详情</span>
-              <div className="detail-title-row">
-                <h3 className="detail-title">{def.label}</h3>
-                <span
-                  className={cx(
-                    "badge",
-                    selected.globalQ != null && selected.globalQ < ALPHA
+            <div className="detail-title-row">
+              <h3 className="detail-title">{def.label}</h3>
+              <span
+                className={cx(
+                  "badge",
+                  selected.status === "insufficient"
+                    ? "badge-warn"
+                    : selected.globalQ != null && selected.globalQ < ALPHA
                       ? "badge-sig"
                       : "badge-muted",
-                  )}
+                )}
+              >
+                {selected.verdict} · q={fmtQ(selected.globalQ)}
+              </span>
+              {selectedBlock ? (
+                <button
+                  type="button"
+                  className="badge badge-sig detail-overlay-pill"
+                  onClick={() => onSelectBlock(null)}
+                  title="取消在分布卡片中叠加周期"
                 >
-                  全局 q = {fmtQ(selected.globalQ)}
-                </span>
-                <span
-                  className={cx(
-                    "badge",
-                    selected.status === "insufficient"
-                      ? "badge-warn"
-                      : "badge-muted",
-                  )}
-                >
-                  {selected.verdict}
-                </span>
-                {selectedBlock ? (
-                  <button
-                    type="button"
-                    className="badge badge-sig detail-overlay-pill"
-                    onClick={() => onSelectBlock(null)}
-                    title="取消在分布卡片中叠加周期"
-                  >
-                    分布叠加 {selectedBlock.label} ×
-                  </button>
-                ) : null}
-              </div>
-              <p className="detail-desc">{def.description}</p>
+                  叠加 {selectedBlock.label} ×
+                </button>
+              ) : null}
             </div>
             <div className="detail-metrics">
               <div>
@@ -285,24 +246,18 @@ export default function DriftSection({
           </div>
 
           {selected.warning ? (
-            <p className="inline-note warn-note">{selected.warning}</p>
+            <p className="inline-note">{selected.warning}</p>
           ) : null}
 
           <div className="detail-grid">
             <div className="chart-card">
-              <div className="chart-card-head">
-                <span>各周期的累积分布（ECDF）</span>
-                <span className="faint">整体为虚线</span>
-              </div>
+              <div className="chart-card-head">各周期 ECDF</div>
               <div className="chart-box">
                 <EChart option={ecdfOpt} height={250} />
               </div>
             </div>
             <div className="chart-card">
-              <div className="chart-card-head">
-                <span>各周期的箱线图</span>
-                <span className="faint">离群值单独标出</span>
-              </div>
+              <div className="chart-card-head">各周期箱线图</div>
               <div className="chart-box">
                 <EChart option={boxOpt} height={250} />
               </div>
@@ -310,10 +265,7 @@ export default function DriftSection({
           </div>
 
           <div className="chart-card trend-card">
-            <div className="chart-card-head">
-              <span>中位数轨迹与 bootstrap 95% 置信区间</span>
-              <span className="faint">阴影为 CI，不显著时仅作描述</span>
-            </div>
+            <div className="chart-card-head">中位数与 95% CI</div>
             <div className="chart-box">
               <EChart option={trendOpt} height={220} />
             </div>
@@ -323,7 +275,6 @@ export default function DriftSection({
             <div className="table-card card-flat">
               <div className="table-head compact">
                 <h4 className="table-title">各周期统计</h4>
-                <span className="faint">点击行可在分布卡片中叠加该周期</span>
               </div>
               <div className="table-wrap block-table-wrap">
                 <table className="data-table block-table">
@@ -500,10 +451,7 @@ export default function DriftSection({
 
             <div className="adjacent-panel card-flat">
               <div className="table-head compact">
-                <h4 className="table-title">相邻周期 KS 检验</h4>
-                <span className="faint">
-                  BH 校正覆盖 6 × {Math.max(0, blocks.length - 1)} 次比较
-                </span>
+                <h4 className="table-title">相邻周期 KS</h4>
               </div>
               {selected.adjacent.length === 0 ? (
                 <p className="adj-empty">
@@ -539,16 +487,13 @@ export default function DriftSection({
                   })}
                 </ul>
               )}
-              <p className="adj-note">
-                相邻检验只在全局显著时解读。显著的相邻变化说明这两个周期的分布差异更大，但它本身不独立于全局检验。
-              </p>
             </div>
           </div>
         </div>
       ) : (
         <div className="card empty-block">
-          <strong>该指标没有可展示的周期统计</strong>
-          <p>可能是有效样本不足，请拉长区间或检查数据。</p>
+          <strong>暂无可展示的周期统计</strong>
+          <p>拉长区间或检查数据后重试。</p>
         </div>
       )}
     </section>

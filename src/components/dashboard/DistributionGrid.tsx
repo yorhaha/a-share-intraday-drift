@@ -18,17 +18,8 @@ interface DistributionGridProps {
   onChartMode: (mode: "hist" | "ecdf") => void;
 }
 
-function sessionCopy(session: MarketSnapshot): {
-  status: string;
-  priceLabel: string;
-} {
-  if (session.isToday && session.time < "15:00") {
-    return { status: "盘中，最新价视为收盘价", priceLabel: "最新" };
-  }
-  if (session.isToday) {
-    return { status: "今日已收盘", priceLabel: "收盘" };
-  }
-  return { status: "沿用最近交易日", priceLabel: "收盘" };
+function priceLabel(session: MarketSnapshot): string {
+  return session.isToday && session.time < "15:00" ? "最新" : "收盘";
 }
 
 export default function DistributionGrid({
@@ -44,23 +35,10 @@ export default function DistributionGrid({
   const driftMap = new Map(
     analysis.drift.metrics.map((item) => [item.metric, item]),
   );
-  const copy = session ? sessionCopy(session) : null;
-
   return (
     <section className="section" id="distributions">
       <div className="section-head">
-        <div>
-          <span className="section-kicker">01 · 分布</span>
-          <h2 className="section-title">六项日内指标的分布</h2>
-          <p className="section-sub">
-            灰色为所选区间的整体分布，彩色为当前周期
-            {selectedBlock ? ` ${selectedBlock.label}` : "（未选中）"}
-            。点击卡片标题或「看漂移」可跳到该指标的周期对比。
-            {chartMode === "ecdf"
-              ? " 累积分布中，正负双侧指标从两端分别向 0 轴累计并在 0 轴汇合；单侧指标按常规 ECDF 累计。"
-              : ""}
-          </p>
-        </div>
+        <h2 className="section-title">分布</h2>
         <div className="seg section-actions" role="group" aria-label="图表类型">
           <button
             type="button"
@@ -79,30 +57,28 @@ export default function DistributionGrid({
         </div>
       </div>
 
-      {session && copy ? (
+      {session ? (
         <div className="session-note">
-          <span className="session-badge">当日位置</span>
-          <span className="session-when">
-            <strong>{session.isToday ? "今日" : "最近交易日"}</strong>
-            <span className="mono faint">
-              {session.date} {session.time}
-            </span>
+          <span className="session-badge">
+            {session.isToday ? "当日" : "最近交易日"}
+          </span>
+          <span className="session-when mono">
+            {session.date} {session.time}
           </span>
           <span className="session-price">
-            {copy.priceLabel}{" "}
+            {priceLabel(session)}{" "}
             <strong className="num">{fmtNum(session.close, 2)}</strong>
           </span>
-          <span className="session-status">{copy.status}</span>
           <span className="session-key">
             <i aria-hidden="true" />
-            图中竖线为该交易日位置
+            图中竖线
           </span>
         </div>
       ) : null}
 
       {analysis.blockResult.blocks.length === 0 ? (
         <p className="inline-note">
-          当前区间不足以切出完整周期，卡片只显示整体分布；可拉长区间或缩短周期。
+          区间不足以切出完整周期，当前只显示整体分布。
         </p>
       ) : null}
 

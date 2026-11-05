@@ -151,7 +151,7 @@ export default function SymbolSearch({ selected, onSelect }: SymbolSearchProps) 
               if (hits.length > 0) setOpen(true);
             }}
             onKeyDown={onKeyDown}
-            placeholder="输入代码、名称或拼音，如 601318 / 中国平安 / zgpa"
+            placeholder="搜索代码、名称或拼音"
             aria-label="搜索 A 股标的"
             role="combobox"
             aria-expanded={open}

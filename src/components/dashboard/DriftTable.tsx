@@ -31,19 +31,6 @@ export default function DriftTable({
 
   return (
     <div className="card table-card">
-      <div className="table-head">
-        <div>
-          <h3 className="table-title">指标级漂移汇总</h3>
-          <p className="table-sub">
-            中位数为区间内百分比；首末差 = 末段 − 首段（百分点）；q 为六项指标 BH
-            校正后的置换检验 p 值。
-          </p>
-        </div>
-        <span className="badge badge-muted">
-          {analysis.drift.testedMetrics} / 6 项可检验
-        </span>
-      </div>
-
       <div className="table-wrap drift-table-wrap">
         <table className="data-table drift-table">
           <caption className="sr-only">各指标在最近周期段的中位数与漂移检验</caption>
@@ -54,9 +41,8 @@ export default function DriftTable({
                 <th key={block.index}>{block.label} 中位数</th>
               ))}
               <th>首末差 (95% CI)</th>
-              <th>全局 q</th>
+              <th>q</th>
               <th>相邻显著变化</th>
-              <th>结论</th>
             </tr>
           </thead>
           <tbody>
@@ -76,12 +62,9 @@ export default function DriftTable({
                     ))}
                     <td>—</td>
                     <td>
-                      <span className="badge badge-muted">—</span>
-                    </td>
-                    <td>—</td>
-                    <td>
                       <span className="badge badge-muted">样本不足</span>
                     </td>
+                    <td>—</td>
                   </tr>
                 );
               }
@@ -118,16 +101,31 @@ export default function DriftTable({
                     )}
                   </td>
                   <td>
-                    <span
-                      className={cx(
-                        "badge",
-                        result.globalQ != null && result.globalQ < 0.05
-                          ? "badge-sig"
-                          : "badge-muted",
-                      )}
-                    >
-                      {fmtQ(result.globalQ)}
-                    </span>
+                    {result.globalQ != null ? (
+                      <span
+                        className={cx(
+                          "badge",
+                          result.globalQ < 0.05
+                            ? "badge-sig"
+                            : "badge-muted",
+                        )}
+                      >
+                        q={fmtQ(result.globalQ)}
+                      </span>
+                    ) : (
+                      <span
+                        className={cx(
+                          "badge",
+                          result.status === "insufficient"
+                            ? "badge-warn"
+                            : "badge-muted",
+                        )}
+                      >
+                        {result.status === "insufficient"
+                          ? "样本不足"
+                          : "常数"}
+                      </span>
+                    )}
                   </td>
                   <td className="adjacent-cell">
                     {result.globalQ != null && result.globalQ < 0.05 ? (
@@ -143,11 +141,6 @@ export default function DriftTable({
                     ) : (
                       <span className="faint">—</span>
                     )}
-                  </td>
-                  <td>
-                    <span className={cx("badge", verdictBadge(result))}>
-                      {result.verdict}
-                    </span>
                   </td>
                 </tr>
               );
@@ -264,9 +257,6 @@ export default function DriftTable({
           );
         })}
       </div>
-      <p className="table-foot">
-        相邻段检验为探索性定位，仅在全局 q &lt; 0.05 时解读；它告诉你变化更可能发生在哪一段，不额外证明因果。
-      </p>
     </div>
   );
 }

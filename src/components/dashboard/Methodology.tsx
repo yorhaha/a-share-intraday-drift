@@ -16,16 +16,23 @@ export default function Methodology() {
   return (
     <details className="methodology card" id="methodology">
       <summary className="methodology-summary">
-        <div>
-          <span className="section-kicker">方法</span>
-          <span className="methodology-title">口径、检验与局限</span>
-        </div>
-        <span className="methodology-cta">
-          展开
-          <span className="chev" aria-hidden="true">
-            ▾
-          </span>
-        </span>
+        <span className="methodology-title">口径与局限</span>
+        <svg
+          className="chev"
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          aria-hidden="true"
+        >
+          <path
+            d="m6 9 6 6 6-6"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
       </summary>
 
       <div className="methodology-body">
